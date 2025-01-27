@@ -1,6 +1,24 @@
 [package]
 name = "vloxverse"
+description = "A voxel sandbox"
+repository = "https://github.com/byzantinedev/vloxverse"
+license = "GPL-3.0"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
+bevy = {version = "0.15.1"}
+wasm-bindgen = {version = "0.2.100"}
+web-sys = "0.3.77"
+
+# Uncomment this for potentially smaller wasm size
+#[package.metadata.wasm-pack.profile.release]
+#wasm-opt = ['-Oz']
+
+# This allows us to profile wasm size using twiggy with wasm resulting from "wasm-pack build --dev"
+# Note this is not the same as the release profile, which can't be profiled due to stripped symbols
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = ['-g', '-O']

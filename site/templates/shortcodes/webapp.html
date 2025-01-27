@@ -1,0 +1,23 @@
+<script type="module">
+    import init, * as wasm from '/wasm/vloxverse.js'
+    init().then(async (_exports) => {
+        console.log("App has terminated!");
+    })
+
+    async function waitForCanvas(selector) {
+        while (!document.querySelector(selector)) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait half a second before checking again
+        }
+        return document.querySelector(selector);
+    }
+
+    (async () => {
+        const canvas = await waitForCanvas('canvas');
+        console.log('Canvas found:', canvas);
+        const content = document.getElementsByClassName("content text")[0]; 
+        content.appendChild(canvas);
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+    })();
+    
+</script>

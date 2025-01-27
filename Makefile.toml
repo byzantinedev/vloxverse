@@ -1,0 +1,44 @@
+
+# Install all dependencies and dev tools
+# Ideally we use cargo to install all of them for simple dev setup on any OS.
+[tasks.setup]
+script = '''
+rustup target add wasm32-unknown-unknown
+cargo install wasm-opt
+cargo install wasm-tools
+cargo install wasm-pack
+cargo install twiggy
+cargo install --git https://github.com/getzola/zola --tag 0.19.2
+'''
+
+# Build optimized release wasm into the site. Outputs wasm size at the end.
+[tasks.wasm]
+script = '''
+cargo fmt
+wasm-pack build --target web --out-dir site/static/wasm
+wc -c site/static/wasm/vloxverse_bg.wasm
+'''
+
+# Build and serve the site locally
+[tasks.serve]
+script = '''
+echo "\nLOCAL: [http://localhost:1111]\n"
+zola --root site serve --output-dir docs --force --interface 0.0.0.0 --base-url /
+'''
+
+# Objdump the wasm file to see the sections and their sizes
+[tasks.objdump]
+script = '''
+wasm-tools objdump docs/wasm/vloxverse_bg.wasm
+'''
+
+# Profile the wasm size of the dev build (cant profile size of release build due to stripped symbols)
+[tasks.twiggy]
+script = '''
+wasm-pack build --dev --target web
+twiggy top pkg/vloxverse_bg.wasm > twiggy.txt
+head -1 twiggy.txt
+head -10 twiggy.txt | tail -8
+echo "..."
+tail -1 twiggy.txt
+'''

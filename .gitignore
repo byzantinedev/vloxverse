@@ -1,1 +1,7 @@
 /target
+
+/twiggy.txt
+
+/docs/wasm/.gitignore
+
+.DS_Store

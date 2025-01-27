@@ -15,15 +15,23 @@ cargo install --git https://github.com/getzola/zola --tag 0.19.2
 [tasks.wasm]
 script = '''
 cargo fmt
-wasm-pack build --target web --out-dir site/static/wasm
-wc -c site/static/wasm/vloxverse_bg.wasm
+wasm-pack build --target web
+wc -c pkg/vloxverse_bg.wasm
+cp pkg/vloxverse_bg.wasm site/static/wasm/vloxverse_bg.wasm
+cp pkg/vloxverse.js site/static/wasm/vloxverse.js
 '''
 
 # Build and serve the site locally
 [tasks.serve]
 script = '''
 echo "\nLOCAL: [http://localhost:1111]\n"
-zola --root site serve --output-dir docs --force --interface 0.0.0.0 --base-url /
+zola --root site serve --output-dir zola-serve --force --interface 0.0.0.0 --base-url /
+'''
+
+# Build publish ready files for Github Pages
+[tasks.gh-pages]
+script = '''
+zola --root site build --output-dir docs --force
 '''
 
 # Objdump the wasm file to see the sections and their sizes

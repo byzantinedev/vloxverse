@@ -2,6 +2,8 @@
 
 /twiggy.txt
 
-/docs/wasm/.gitignore
-
 .DS_Store
+
+/site/static/wasm/*
+
+/zola-serve/*

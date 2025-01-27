@@ -33,6 +33,7 @@ zola --root site serve --output-dir zola-serve --force --interface 0.0.0.0 --bas
 script = '''
 zola --root site build --output-dir docs --force
 '''
+dependencies = ["wasm"]
 
 # Objdump the wasm file to see the sections and their sizes
 [tasks.objdump]

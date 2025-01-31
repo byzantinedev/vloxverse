@@ -21,6 +21,17 @@ cp pkg/vloxverse_bg.wasm site/static/wasm/vloxverse_bg.wasm
 cp pkg/vloxverse.js site/static/wasm/vloxverse.js
 '''
 
+
+# Build optimized release wasm into the site. Outputs wasm size at the end.
+[tasks.wasm-dev]
+script = '''
+cargo fmt
+wasm-pack build --dev --target web
+wc -c pkg/vloxverse_bg.wasm
+cp pkg/vloxverse_bg.wasm site/static/wasm/vloxverse_bg.wasm
+cp pkg/vloxverse.js site/static/wasm/vloxverse.js
+'''
+
 # Build and serve the site locally
 [tasks.serve]
 script = '''

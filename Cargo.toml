@@ -10,15 +10,28 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+
+# Bevy dependencies
 bevy = {version = "0.15.1"}
+bevy_flycam = "0.15.0"
+
+# WASM dependencies
 wasm-bindgen = {version = "0.2.100"}
 web-sys = "0.3.77"
 
-# Uncomment this for potentially smaller wasm size
-#[package.metadata.wasm-pack.profile.release]
-#wasm-opt = ['-Oz']
+
+## Note: Not using these and using wasm-strip instead may be more effective at reducing wasm size
+[profile.release]
+opt-level = 'z'
+lto = true # "fat"
+codegen-units = 1
+panic = 'abort'
+
+# Optimize more aggressively for wasm size
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-Oz']
 
 # This allows us to profile wasm size using twiggy with wasm resulting from "wasm-pack build --dev"
 # Note this is not the same as the release profile, which can't be profiled due to stripped symbols
-[package.metadata.wasm-pack.profile.dev]
-wasm-opt = ['-g', '-O']
+# [package.metadata.wasm-pack.profile.dev]
+# wasm-opt = ['-g', '-Oz']

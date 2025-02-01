@@ -53,7 +53,7 @@ fn setup(
     // camera
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 0.0, -6.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 0.0, -10.0).looking_at(Vec3::ZERO, Vec3::Y),
         FlyCam,
     ));
     //sphere
@@ -94,8 +94,9 @@ fn setup(
     data.set(0, 0, 2, 2, 1);
     data.set(0, 0, 3, 2, 1);
 
+    info!("{:?}", data);
     commands.spawn((
-        Mesh3d(meshes.add(data.compute_mesh_at_depth(2))),
+        Mesh3d(meshes.add(data.compute_mesh_at_depth(6))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));

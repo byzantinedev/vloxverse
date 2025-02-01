@@ -62,3 +62,8 @@ head -10 twiggy.txt | tail -8
 echo "..."
 tail -1 twiggy.txt
 '''
+
+[tasks.test-mac]
+script = '''
+cargo test --target aarch64-apple-darwin
+'''

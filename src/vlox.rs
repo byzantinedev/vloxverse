@@ -16,6 +16,8 @@ pub enum SubVlox {
     X1Y1Z0 = 6,
     X1Y1Z1 = 7,
 }
+
+#[derive(Debug)]
 pub struct VloxData {
     size: f32,
     root: Vlox,
@@ -35,29 +37,43 @@ impl VloxData {
     }
 
     //max depth: 128. Anything more won't be representable as u128.
-    fn xyz_to_path(&self, x: u128, y: u128, z: u128, depth: u8) -> Vec<SubVlox> {
+    fn xyz_to_path(&self, mut x: u128, mut y: u128, mut z: u128, depth: u8) -> Vec<SubVlox> {
         let mut path = vec![];
-        for i in 0..depth {
-            let blocks = 2_u128.pow((i + 1) as u32);
-            let x = x % blocks;
-            let y = y % blocks;
-            let z = z % blocks;
-            if x < blocks / 2 && y < blocks / 2 && z < blocks / 2 {
+        let mut blocks = 0; //number of blocks to middle
+        for i in 1..(depth + 1) {
+            blocks = 2_u128.pow((depth - i) as u32);
+            // let x = x % blocks;
+            // let y = y % blocks;
+            // let z = z % blocks;
+
+            if x < blocks && y < blocks && z < blocks {
                 path.push(SubVlox::X0Y0Z0);
-            } else if x < blocks / 2 && y < blocks / 2 && z >= blocks / 2 {
+            } else if x < blocks && y < blocks && z >= blocks {
                 path.push(SubVlox::X0Y0Z1);
-            } else if x < blocks / 2 && y >= blocks / 2 && z < blocks / 2 {
+                z -= blocks;
+            } else if x < blocks && y >= blocks && z < blocks {
                 path.push(SubVlox::X0Y1Z0);
-            } else if x < blocks / 2 && y >= blocks / 2 && z >= blocks / 2 {
+                y -= blocks;
+            } else if x < blocks && y >= blocks && z >= blocks {
                 path.push(SubVlox::X0Y1Z1);
-            } else if x >= blocks / 2 && y < blocks / 2 && z < blocks / 2 {
+                y -= blocks;
+                z -= blocks;
+            } else if x >= blocks && y < blocks && z < blocks {
                 path.push(SubVlox::X1Y0Z0);
-            } else if x >= blocks / 2 && y < blocks / 2 && z >= blocks / 2 {
+                x -= blocks;
+            } else if x >= blocks && y < blocks && z >= blocks {
                 path.push(SubVlox::X1Y0Z1);
-            } else if x >= blocks / 2 && y >= blocks / 2 && z < blocks / 2 {
+                x -= blocks;
+                z -= blocks;
+            } else if x >= blocks && y >= blocks && z < blocks {
                 path.push(SubVlox::X1Y1Z0);
-            } else if x >= blocks / 2 && y >= blocks / 2 && z >= blocks / 2 {
+                x -= blocks;
+                y -= blocks;
+            } else if x >= blocks && y >= blocks && z >= blocks {
                 path.push(SubVlox::X1Y1Z1);
+                x -= blocks;
+                y -= blocks;
+                z -= blocks;
             }
         }
         path
@@ -206,7 +222,7 @@ impl VloxData {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Vlox {
     value: u8,
     children: Vec<Option<Vlox>>,
@@ -223,6 +239,9 @@ impl Vlox {
         if path.len() == 0 {
             return self.value;
         }
+        if self.children.len() == 0 {
+            return self.value;
+        }
         // if possible, go to the next stage of the path, else return value
         if let Some(child) = &self.children[path[0] as usize] {
             return child.get(path[1..].to_vec());
@@ -234,10 +253,12 @@ impl Vlox {
         // if we reached the end of the path, set value
         if path.len() == 0 {
             self.value = value;
-            self.children = vec![None; 8];
+            self.children = vec![];
             return;
         }
-
+        if self.children.len() == 0 {
+            self.children = vec![None; 8];
+        }
         // go to the next stage of the path, creating a new node if required
         if let Some(child) = &mut self.children[path[0] as usize] {
             child.set(path[1..].to_vec(), value);
@@ -245,6 +266,39 @@ impl Vlox {
             let mut vlox = Vlox::new(self.value);
             vlox.set(path[1..].to_vec(), value);
             self.children[path[0] as usize] = Some(vlox);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_vlox_depth_2() {
+        let depth: u8 = 2;
+        let blocks = 2_u128.pow(depth as u32);
+
+        let mut data = VloxData::new(8.0);
+
+        let mut value = 0;
+        for x in 0..blocks {
+            for y in 0..blocks {
+                for z in 0..blocks {
+                    data.set(x, y, z, depth, value);
+                    value += 1;
+                }
+            }
+        }
+
+        value = 0;
+        for x in 0..blocks {
+            for y in 0..blocks {
+                for z in 0..blocks {
+                    assert_eq!(value, data.get(x, y, z, depth));
+                    value += 1;
+                }
+            }
         }
     }
 }

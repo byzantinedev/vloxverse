@@ -296,6 +296,14 @@ mod tests {
             for y in 0..blocks {
                 for z in 0..blocks {
                     assert_eq!(value, data.get(x, y, z, depth));
+                    assert_eq!(value, data.get(x * 2, y * 2, z * 2, depth + 1));
+                    assert_eq!(value, data.get(x * 2, y * 2, z * 2 + 1, depth + 1));
+                    assert_eq!(value, data.get(x * 2, y * 2 + 1, z * 2, depth + 1));
+                    assert_eq!(value, data.get(x * 2, y * 2 + 1, z * 2 + 1, depth + 1));
+                    assert_eq!(value, data.get(x * 2 + 1, y * 2, z * 2, depth + 1));
+                    assert_eq!(value, data.get(x * 2 + 1, y * 2, z * 2 + 1, depth + 1));
+                    assert_eq!(value, data.get(x * 2 + 1, y * 2 + 1, z * 2, depth + 1));
+                    assert_eq!(value, data.get(x * 2 + 1, y * 2 + 1, z * 2 + 1, depth + 1));
                     value += 1;
                 }
             }

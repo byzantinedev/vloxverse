@@ -67,3 +67,8 @@ tail -1 twiggy.txt
 script = '''
 cargo test --target aarch64-apple-darwin
 '''
+
+[tasks.mac]
+script = '''
+cargo run --target aarch64-apple-darwin
+'''

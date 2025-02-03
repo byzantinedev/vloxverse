@@ -39,7 +39,7 @@ impl VloxData {
     //max depth: 128. Anything more won't be representable as u128.
     fn xyz_to_path(&self, mut x: u128, mut y: u128, mut z: u128, depth: u8) -> Vec<SubVlox> {
         let mut path = vec![];
-        let mut blocks = 0; //number of blocks to middle
+        let mut blocks; //number of blocks to middle
         for i in 1..(depth + 1) {
             blocks = 2_u128.pow((depth - i) as u32);
             // let x = x % blocks;

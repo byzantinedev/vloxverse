@@ -1,9 +1,3 @@
-use bevy::{
-    asset::RenderAssetUsages,
-    prelude::*,
-    render::mesh::{Indices, PrimitiveTopology::TriangleList, VertexAttributeValues::Float32x3},
-};
-
 #[repr(u8)]
 #[derive(Copy, Clone)]
 pub enum SubVlox {
@@ -78,7 +72,7 @@ impl VloxData {
         }
         path
     }
-    pub fn compute_mesh_at_depth(&self, depth: u8) -> Mesh {
+    pub fn compute_mesh_at_depth(&self, depth: u8) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<u32>) {
         let mut vertices = vec![];
         let mut normals = vec![];
         let mut indices = vec![];
@@ -214,11 +208,7 @@ impl VloxData {
             vertices[i][1] -= offset;
             vertices[i][2] -= offset;
         }
-        let mut mesh = Mesh::new(TriangleList, RenderAssetUsages::RENDER_WORLD);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Float32x3(vertices));
-        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Float32x3(normals));
-        mesh.insert_indices(Indices::U32(indices));
-        mesh
+        (vertices, normals, indices)
     }
 }
 

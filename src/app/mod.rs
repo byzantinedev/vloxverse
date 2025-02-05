@@ -5,12 +5,15 @@ use bevy::{
     prelude::*,
     render::{
         camera::NormalizedRenderTarget,
-        mesh::{Indices, PrimitiveTopology::TriangleList, VertexAttributeValues::Float32x3},
+        mesh::{
+            Indices, MeshAabb, PrimitiveTopology::TriangleList, VertexAttributeValues::Float32x3,
+        },
     },
     window::{CursorGrabMode, WindowRef},
 };
 use bevy_flycam::{FlyCam, NoCameraPlayerPlugin};
 use uuid::Uuid;
+use vlox::VloxData;
 
 mod vlox;
 
@@ -18,10 +21,11 @@ pub fn start() {
     App::new()
         .add_plugins((DefaultPlugins, MeshPickingPlugin))
         .add_plugins(NoCameraPlayerPlugin)
+        .init_resource::<VloxSettings>()
         .add_systems(Startup, setup)
         .add_systems(Update, focus_camera)
         .add_systems(Update, grab_mouse)
-        .add_systems(Update, draw_mesh_intersections)
+        .add_systems(Update, edit_mesh)
         .run();
 }
 
@@ -56,6 +60,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut vlox_settings: ResMut<VloxSettings>,
     win: Single<(Entity, &Window)>,
 ) {
     let window_entity = win.0;
@@ -102,20 +107,28 @@ fn setup(
     data.set(0, 0, 2, 2, 1);
     data.set(0, 0, 3, 2, 1);
 
-    let (vertices, normals, indices) = data.compute_mesh_at_depth(6);
-    let mut mesh = Mesh::new(TriangleList, RenderAssetUsages::default());
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Float32x3(vertices));
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Float32x3(normals));
-    mesh.insert_indices(Indices::U32(indices));
+    let (vertices, normals, indices) = compute_mesh(&data);
+    vlox_settings.data = data;
+    vlox_settings.selected_depth = 6;
+
     commands.spawn((
-        Mesh3d(meshes.add(mesh)),
+        Mesh3d(meshes.add(build_vlox_mesh(vertices, normals, indices))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
         Transform::from_xyz(0.0, 0.0, 0.0),
+        MainMesh,
     ));
 }
 
 /// A system that draws hit indicators for every pointer.
-fn draw_mesh_intersections(pointers: Query<(&PointerInteraction, &PointerId)>, mut gizmos: Gizmos) {
+fn edit_mesh(
+    pointers: Query<(&PointerInteraction, &PointerId)>,
+    mut gizmos: Gizmos,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
+    mut vlox_settings: ResMut<VloxSettings>,
+    main_mesh: Single<(&Mesh3d, &MainMesh)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
     for (point, normal) in pointers
         .iter()
         .filter_map(|(interaction, id)| {
@@ -129,5 +142,101 @@ fn draw_mesh_intersections(pointers: Query<(&PointerInteraction, &PointerId)>, m
     {
         gizmos.sphere(point, 0.05, RED_500);
         gizmos.arrow(point, point + normal.normalize() * 0.5, PINK_100);
+
+        let depth = vlox_settings.selected_depth;
+        let (vx, vy, vz) = vlox_settings
+            .data
+            .xyz_f32_to_vlox_xyz(point.x, point.y, point.z, depth);
+        println!("{},{},{} depth: {}", vx, vy, vz, depth);
+
+        if mouse_button_input.just_pressed(MouseButton::Left) {
+            let depth = vlox_settings.selected_depth;
+            let half_vlox = vlox_settings
+                .data
+                .vlox_size(vlox_settings.data.num_vlox(depth))
+                / 2.0;
+            let point = point + normal * half_vlox;
+
+            let bounds = vlox_settings.data.size() / 2.0;
+            if !(point.x >= bounds
+                || point.x <= -bounds
+                || point.y >= bounds
+                || point.y <= -bounds
+                || point.z >= bounds
+                || point.z <= -bounds)
+            {
+                if let Some(mesh) = meshes.get_mut(&main_mesh.0 .0) {
+                    let (vx, vy, vz) = vlox_settings
+                        .data
+                        .xyz_f32_to_vlox_xyz(point.x, point.y, point.z, depth);
+                    vlox_settings.data.set(vx, vy, vz, depth, 1);
+
+                    let (vertices, normals, indices) = compute_mesh(&vlox_settings.data);
+                    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Float32x3(vertices));
+                    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Float32x3(normals));
+                    mesh.insert_indices(Indices::U32(indices));
+                    mesh.compute_aabb();
+                }
+            }
+        } else if mouse_button_input.just_pressed(MouseButton::Right) {
+            let depth = vlox_settings.selected_depth;
+            let half_vlox = vlox_settings
+                .data
+                .vlox_size(vlox_settings.data.num_vlox(depth))
+                / 2.0;
+            let point = point - normal * half_vlox;
+
+            let bounds = vlox_settings.data.size() / 2.0;
+            if !(point.x >= bounds
+                || point.x <= -bounds
+                || point.y >= bounds
+                || point.y <= -bounds
+                || point.z >= bounds
+                || point.z <= -bounds)
+            {
+                if let Some(mesh) = meshes.get_mut(&main_mesh.0 .0) {
+                    let (vx, vy, vz) = vlox_settings
+                        .data
+                        .xyz_f32_to_vlox_xyz(point.x, point.y, point.z, depth);
+                    vlox_settings.data.set(vx, vy, vz, depth, 0);
+
+                    let (vertices, normals, indices) = compute_mesh(&vlox_settings.data);
+                    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Float32x3(vertices));
+                    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Float32x3(normals));
+                    mesh.insert_indices(Indices::U32(indices));
+                    mesh.compute_aabb();
+                    info!("updated mesh")
+                }
+            }
+        }
     }
+    if keyboard_input.just_pressed(KeyCode::Digit1) && vlox_settings.selected_depth > 0 {
+        vlox_settings.selected_depth -= 1;
+        println!("new depth: {}", vlox_settings.selected_depth);
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit2) && vlox_settings.selected_depth < 6 {
+        vlox_settings.selected_depth += 1;
+        println!("new depth: {}", vlox_settings.selected_depth);
+    }
+}
+
+#[derive(Resource, Default)]
+struct VloxSettings {
+    selected_depth: u8,
+    data: vlox::VloxData,
+}
+
+#[derive(Component)]
+struct MainMesh;
+
+fn build_vlox_mesh(vertices: Vec<[f32; 3]>, normals: Vec<[f32; 3]>, indices: Vec<u32>) -> Mesh {
+    let mut mesh = Mesh::new(TriangleList, RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Float32x3(vertices));
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Float32x3(normals));
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+fn compute_mesh(data: &VloxData) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<u32>) {
+    data.compute_mesh_at_depth(6)
 }

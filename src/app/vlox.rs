@@ -16,12 +16,43 @@ pub struct VloxData {
     size: f32,
     root: Vlox,
 }
+impl Default for VloxData {
+    fn default() -> Self {
+        Self::new(8.0)
+    }
+}
 impl VloxData {
     pub fn new(size: f32) -> Self {
         Self {
             size,
             root: Vlox::new(0),
         }
+    }
+    pub fn size(&self) -> f32 {
+        self.size
+    }
+    pub fn num_vlox(&self, depth: u8) -> u128 {
+        2_u128.pow(depth as u32)
+    }
+    pub fn vlox_size(&self, num_vlox: u128) -> f32 {
+        self.size / num_vlox as f32
+    }
+    pub fn xyz_f32_to_vlox_xyz(
+        &self,
+        mut x: f32,
+        mut y: f32,
+        mut z: f32,
+        depth: u8,
+    ) -> (u128, u128, u128) {
+        let num_vlox = self.num_vlox(depth) as f32;
+        x += self.size * 0.5;
+        y += self.size * 0.5;
+        z += self.size * 0.5;
+        (
+            (x / self.size * num_vlox) as u128,
+            (y / self.size * num_vlox) as u128,
+            (z / self.size * num_vlox) as u128,
+        )
     }
     pub fn get(&self, x: u128, y: u128, z: u128, depth: u8) -> u8 {
         self.root.get(self.xyz_to_path(x, y, z, depth))

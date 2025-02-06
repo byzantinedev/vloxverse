@@ -1,6 +1,5 @@
 use bevy::{
     asset::RenderAssetUsages,
-    color::palettes::tailwind::{PINK_100, RED_500},
     picking::pointer::{Location, PointerId, PointerInteraction, PointerLocation},
     prelude::*,
     render::{
@@ -140,21 +139,33 @@ fn edit_mesh(
         })
         .filter_map(|(_entity, hit)| hit.position.zip(hit.normal))
     {
-        gizmos.sphere(point, 0.05, RED_500);
-        gizmos.arrow(point, point + normal.normalize() * 0.5, PINK_100);
-
         let depth = vlox_settings.selected_depth;
+        let vlox_size = vlox_settings
+            .data
+            .vlox_size(vlox_settings.data.num_vlox(depth));
+        let half_vlox = vlox_size / 2.0;
+
+        let preview_xyz = point + normal * half_vlox;
+        let (vx, vy, vz) = vlox_settings.data.xyz_f32_to_vlox_xyz(
+            preview_xyz.x,
+            preview_xyz.y,
+            preview_xyz.z,
+            depth,
+        );
+        let (preview_x, preview_y, preview_z) =
+            vlox_settings.data.vlox_xyz_to_xyz_f32(vx, vy, vz, depth);
+        let preview_xyz = Vec3::new(preview_x, preview_y, preview_z);
+        gizmos.cuboid(
+            Transform::from_translation(preview_xyz).with_scale(Vec3::ONE * vlox_size),
+            Color::WHITE,
+        );
+
         let (vx, vy, vz) = vlox_settings
             .data
             .xyz_f32_to_vlox_xyz(point.x, point.y, point.z, depth);
         println!("{},{},{} depth: {}", vx, vy, vz, depth);
 
         if mouse_button_input.just_pressed(MouseButton::Left) {
-            let depth = vlox_settings.selected_depth;
-            let half_vlox = vlox_settings
-                .data
-                .vlox_size(vlox_settings.data.num_vlox(depth))
-                / 2.0;
             let point = point + normal * half_vlox;
 
             let bounds = vlox_settings.data.size() / 2.0;

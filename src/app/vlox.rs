@@ -37,21 +37,23 @@ impl VloxData {
     pub fn vlox_size(&self, num_vlox: u128) -> f32 {
         self.size / num_vlox as f32
     }
-    pub fn xyz_f32_to_vlox_xyz(
-        &self,
-        mut x: f32,
-        mut y: f32,
-        mut z: f32,
-        depth: u8,
-    ) -> (u128, u128, u128) {
+    pub fn xyz_f32_to_vlox_xyz(&self, x: f32, y: f32, z: f32, depth: u8) -> (u128, u128, u128) {
         let num_vlox = self.num_vlox(depth) as f32;
-        x += self.size * 0.5;
-        y += self.size * 0.5;
-        z += self.size * 0.5;
+        let offset = self.size * 0.5;
         (
-            (x / self.size * num_vlox) as u128,
-            (y / self.size * num_vlox) as u128,
-            (z / self.size * num_vlox) as u128,
+            ((x + offset) / self.size * num_vlox) as u128,
+            ((y + offset) / self.size * num_vlox) as u128,
+            ((z + offset) / self.size * num_vlox) as u128,
+        )
+    }
+    pub fn vlox_xyz_to_xyz_f32(&self, vx: u128, vy: u128, vz: u128, depth: u8) -> (f32, f32, f32) {
+        let num_vlox = self.num_vlox(depth);
+        let half_vlox = self.vlox_size(num_vlox) * 0.5;
+        let offset = self.size * 0.5;
+        (
+            (vx as f32 / num_vlox as f32 * self.size - offset + half_vlox),
+            (vy as f32 / num_vlox as f32 * self.size - offset + half_vlox),
+            (vz as f32 / num_vlox as f32 * self.size - offset + half_vlox),
         )
     }
     pub fn get(&self, x: u128, y: u128, z: u128, depth: u8) -> u8 {

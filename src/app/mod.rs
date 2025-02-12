@@ -8,7 +8,7 @@ use bevy::{
             Indices, MeshAabb, PrimitiveTopology::TriangleList, VertexAttributeValues::Float32x3,
         },
     },
-    window::{CursorGrabMode, WindowRef},
+    window::{CursorGrabMode, WindowMode, WindowRef},
 };
 use bevy_flycam::{FlyCam, NoCameraPlayerPlugin};
 use uuid::Uuid;
@@ -27,17 +27,57 @@ const CONTROLS_VLOX_SIZE_UP: KeyCode = KeyCode::Equal;
 const CONTROLS_VLOX_SIZE_DOWN: KeyCode = KeyCode::Minus;
 
 pub fn start() {
-    App::new()
-        .add_plugins((DefaultPlugins, MeshPickingPlugin))
+    let mut app = App::new();
+
+    app.add_plugins(MeshPickingPlugin)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+                ..default()
+            }),
+            ..default()
+        }))
         .add_plugins(NoCameraPlayerPlugin)
         .init_resource::<VloxSettings>()
         .add_systems(Startup, setup)
+        .add_systems(Update, pause_resume)
         .add_systems(Update, focus_camera)
-        .add_systems(Update, grab_mouse)
         .add_systems(Update, edit_mesh)
-        .run();
+        .add_systems(Update, update_pointer_location);
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        app.add_systems(Startup, || {
+            let canvas: web_sys::HtmlCanvasElement = wasm_bindgen::JsCast::unchecked_into(
+                web_sys::window()
+                    .unwrap()
+                    .document()
+                    .unwrap()
+                    .query_selector("canvas")
+                    .unwrap()
+                    .unwrap(),
+            );
+            let style = canvas.style();
+            style.set_property("width", "100%").unwrap();
+            style.set_property("height", "100%").unwrap();
+        });
+    }
+
+    app.run();
 }
 
+fn update_pointer_location(
+    mut pointer: Single<&mut PointerLocation, With<Camera>>,
+    win: Single<(Entity, &Window)>,
+) {
+    if let Some(location) = &mut pointer.location {
+        let window = win.1;
+        let width = window.width();
+        let height = window.height();
+
+        location.position = Vec2::new(width / 2.0, height / 2.0)
+    }
+}
 fn focus_camera(
     mut camera: Single<&mut Transform, With<Camera>>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
@@ -47,16 +87,28 @@ fn focus_camera(
     }
 }
 
-// This system grabs the mouse when the left mouse button is pressed
-// and releases it when the escape key is pressed
-fn grab_mouse(
+fn pause_resume(
     mut window: Single<&mut Window>,
     mouse: Res<ButtonInput<MouseButton>>,
     key: Res<ButtonInput<KeyCode>>,
 ) {
-    if mouse.just_pressed(MouseButton::Left) {
+    if mouse.any_just_pressed(vec![MouseButton::Left, MouseButton::Right]) {
         window.cursor_options.visible = false;
         window.cursor_options.grab_mode = CursorGrabMode::Locked;
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let canvas: web_sys::HtmlCanvasElement = wasm_bindgen::JsCast::unchecked_into(
+                web_sys::window()
+                    .unwrap()
+                    .document()
+                    .unwrap()
+                    .query_selector("canvas")
+                    .unwrap()
+                    .unwrap(),
+            );
+            canvas.request_fullscreen().unwrap();
+        }
     }
 
     if key.just_pressed(KeyCode::Escape) {

@@ -70,5 +70,6 @@ cargo test --target aarch64-apple-darwin
 
 [tasks.mac]
 script = '''
+cargo fmt
 cargo run --release --target aarch64-apple-darwin
 '''

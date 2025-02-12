@@ -16,6 +16,16 @@ use vlox::VloxData;
 
 mod vlox;
 
+const MESH_SIZE: f32 = 4.0;
+
+const MIN_VLOX_DEPTH: u8 = 1;
+const MAX_VLOX_DEPTH: u8 = 5;
+const INITIAL_VLOX_DEPTH: u8 = 5;
+const COMPUTE_MESH_DEPTH: u8 = 5;
+
+const CONTROLS_VLOX_SIZE_UP: KeyCode = KeyCode::Equal;
+const CONTROLS_VLOX_SIZE_DOWN: KeyCode = KeyCode::Minus;
+
 pub fn start() {
     App::new()
         .add_plugins((DefaultPlugins, MeshPickingPlugin))
@@ -91,7 +101,7 @@ fn setup(
     ));
 
     // Custom mesh
-    let mut data = vlox::VloxData::new(8.0);
+    let mut data = vlox::VloxData::new(MESH_SIZE);
     data.set(0, 0, 0, 2, 1);
 
     data.set(1, 0, 0, 2, 1);
@@ -108,7 +118,7 @@ fn setup(
 
     let (vertices, normals, indices) = compute_mesh(&data);
     vlox_settings.data = data;
-    vlox_settings.selected_depth = 6;
+    vlox_settings.selected_depth = INITIAL_VLOX_DEPTH;
 
     commands.spawn((
         Mesh3d(meshes.add(build_vlox_mesh(vertices, normals, indices))),
@@ -221,11 +231,15 @@ fn edit_mesh(
             }
         }
     }
-    if keyboard_input.just_pressed(KeyCode::Digit1) && vlox_settings.selected_depth > 0 {
+    if keyboard_input.just_pressed(CONTROLS_VLOX_SIZE_UP)
+        && vlox_settings.selected_depth > MIN_VLOX_DEPTH
+    {
         vlox_settings.selected_depth -= 1;
         println!("new depth: {}", vlox_settings.selected_depth);
     }
-    if keyboard_input.just_pressed(KeyCode::Digit2) && vlox_settings.selected_depth < 6 {
+    if keyboard_input.just_pressed(CONTROLS_VLOX_SIZE_DOWN)
+        && vlox_settings.selected_depth < MAX_VLOX_DEPTH
+    {
         vlox_settings.selected_depth += 1;
         println!("new depth: {}", vlox_settings.selected_depth);
     }
@@ -249,5 +263,5 @@ fn build_vlox_mesh(vertices: Vec<[f32; 3]>, normals: Vec<[f32; 3]>, indices: Vec
 }
 
 fn compute_mesh(data: &VloxData) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<u32>) {
-    data.compute_mesh_at_depth(6)
+    data.compute_mesh_at_depth(COMPUTE_MESH_DEPTH)
 }

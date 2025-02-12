@@ -1,3 +1,70 @@
+use std::collections::HashMap;
+
+pub type MaterialId = u16;
+
+#[derive(Default)]
+pub struct MaterialMap {
+    map: HashMap<MaterialId, Material>,
+}
+impl MaterialMap {
+    pub fn color(&self, id: MaterialId, vx: u128, vy: u128, vz: u128, depth: u8) -> VloxColor {
+        match &self.map[&id] {
+            Material::Void => VloxColor::Void,
+            Material::Solid(builder) => {
+                let color_index = builder.data.get(vx, vy, vz, depth);
+                VloxColor::Solid(builder.colors[color_index as usize])
+            }
+            Material::Custom(builder) => {
+                //TODO: call wasm to get real materialid, then lookup color
+                VloxColor::Void
+            }
+        }
+    }
+    pub fn get(&self, id: MaterialId) -> Option<&Material> {
+        self.map.get(&id)
+    }
+    pub fn set(&mut self, id: MaterialId, material: Material) {
+        self.map.insert(id, material);
+    }
+}
+
+#[derive(PartialEq)]
+pub enum VloxColor {
+    Void,
+    Solid(Color),
+}
+
+pub enum Material {
+    Void,
+    Solid(SolidMaterial),
+    Custom(CustomMaterial),
+}
+pub struct SolidMaterial {
+    pub name: String,
+    pub data: VloxData,
+    pub colors: Vec<Color>,
+}
+pub struct CustomMaterial {
+    pub name: String,
+    pub wasm: Vec<u8>,
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub struct Color {
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+}
+impl Color {
+    pub fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self { r, g, b, a }
+    }
+    pub fn as_f32x4(&self) -> [f32; 4] {
+        [self.r, self.g, self.b, self.a]
+    }
+}
+
 #[repr(u8)]
 #[derive(Copy, Clone)]
 pub enum SubVlox {
@@ -18,11 +85,12 @@ pub struct VloxData {
 }
 impl Default for VloxData {
     fn default() -> Self {
-        Self::new(8.0)
+        Self::new(0)
     }
 }
 impl VloxData {
-    pub fn new(size: f32) -> Self {
+    pub fn new(depth_to_unit: u8) -> Self {
+        let size = 2_u128.pow(depth_to_unit as u32) as f32;
         Self {
             size,
             root: Vlox::new(0),
@@ -56,10 +124,10 @@ impl VloxData {
             (vz as f32 / num_vlox as f32 * self.size - offset + half_vlox),
         )
     }
-    pub fn get(&self, x: u128, y: u128, z: u128, depth: u8) -> u8 {
+    pub fn get(&self, x: u128, y: u128, z: u128, depth: u8) -> MaterialId {
         self.root.get(self.xyz_to_path(x, y, z, depth))
     }
-    pub fn set(&mut self, x: u128, y: u128, z: u128, depth: u8, value: u8) {
+    pub fn set(&mut self, x: u128, y: u128, z: u128, depth: u8, value: MaterialId) {
         self.root.set(self.xyz_to_path(x, y, z, depth), value);
     }
 
@@ -105,9 +173,14 @@ impl VloxData {
         }
         path
     }
-    pub fn compute_mesh_at_depth(&self, depth: u8) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<u32>) {
+    pub fn compute_mesh_at_depth(
+        &self,
+        depth: u8,
+        materials: &MaterialMap,
+    ) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<[f32; 4]>, Vec<u32>) {
         let mut vertices = vec![];
         let mut normals = vec![];
+        let mut colors = vec![];
         let mut indices = vec![];
 
         let mut size = self.size;
@@ -118,16 +191,25 @@ impl VloxData {
         let blocks = 2_u128.pow(depth as u32);
 
         //iterate potential vertices
+        let mut x;
+        let mut y;
+        let mut z;
+        let mut id;
+        let mut adjacent_id;
+        let mut adjacent_color;
         for vx in 0..blocks {
             for vy in 0..blocks {
                 for vz in 0..blocks {
-                    if self.get(vx, vy, vz, depth) == 1 {
-                        let x = vx as f32;
-                        let y = vy as f32;
-                        let z = vz as f32;
+                    id = self.get(vx, vy, vz, depth);
+                    if let VloxColor::Solid(color) = materials.color(id, 0, 0, 0, 0) {
+                        x = vx as f32;
+                        y = vy as f32;
+                        z = vz as f32;
 
                         //right
-                        if vx == 0 || self.get(vx - 1, vy, vz, depth) == 0 {
+                        adjacent_id = self.get(vx - 1, vy, vz, depth);
+                        adjacent_color = materials.color(adjacent_id, 0, 0, 0, 0);
+                        if vx == 0 || adjacent_color == VloxColor::Void {
                             vertices.push([size * x, size * y, size * z]);
                             vertices.push([size * x, size * y, size * (z + 1.0)]);
                             vertices.push([size * x, size * (y + 1.0), size * (z + 1.0)]);
@@ -136,6 +218,10 @@ impl VloxData {
                             normals.push([-1.0, 0.0, 0.0]);
                             normals.push([-1.0, 0.0, 0.0]);
                             normals.push([-1.0, 0.0, 0.0]);
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
                             indices.push(vertices.len() as u32 - 4);
                             indices.push(vertices.len() as u32 - 3);
                             indices.push(vertices.len() as u32 - 2);
@@ -144,7 +230,9 @@ impl VloxData {
                             indices.push(vertices.len() as u32 - 4);
                         }
                         //left
-                        if vx == blocks - 1 || self.get(vx + 1, vy, vz, depth) == 0 {
+                        adjacent_id = self.get(vx + 1, vy, vz, depth);
+                        adjacent_color = materials.color(adjacent_id, 0, 0, 0, 0);
+                        if vx == blocks - 1 || adjacent_color == VloxColor::Void {
                             vertices.push([size * (x + 1.0), size * y, size * z]);
                             vertices.push([size * (x + 1.0), size * y, size * (z + 1.0)]);
                             vertices.push([size * (x + 1.0), size * (y + 1.0), size * (z + 1.0)]);
@@ -153,6 +241,10 @@ impl VloxData {
                             normals.push([1.0, 0.0, 0.0]);
                             normals.push([1.0, 0.0, 0.0]);
                             normals.push([1.0, 0.0, 0.0]);
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
                             indices.push(vertices.len() as u32 - 4);
                             indices.push(vertices.len() as u32 - 1);
                             indices.push(vertices.len() as u32 - 2);
@@ -162,7 +254,9 @@ impl VloxData {
                         }
 
                         //bottom
-                        if vy == 0 || self.get(vx, vy - 1, vz, depth) == 0 {
+                        adjacent_id = self.get(vx, vy - 1, vz, depth);
+                        adjacent_color = materials.color(adjacent_id, 0, 0, 0, 0);
+                        if vy == 0 || adjacent_color == VloxColor::Void {
                             vertices.push([size * x, size * y, size * z]);
                             vertices.push([size * (x + 1.0), size * y, size * z]);
                             vertices.push([size * (x + 1.0), size * y, size * (z + 1.0)]);
@@ -171,6 +265,10 @@ impl VloxData {
                             normals.push([0.0, -1.0, 0.0]);
                             normals.push([0.0, -1.0, 0.0]);
                             normals.push([0.0, -1.0, 0.0]);
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
                             indices.push(vertices.len() as u32 - 4);
                             indices.push(vertices.len() as u32 - 3);
                             indices.push(vertices.len() as u32 - 2);
@@ -179,7 +277,9 @@ impl VloxData {
                             indices.push(vertices.len() as u32 - 4);
                         }
                         //top
-                        if vy == blocks - 1 || self.get(vx, vy + 1, vz, depth) == 0 {
+                        adjacent_id = self.get(vx, vy + 1, vz, depth);
+                        adjacent_color = materials.color(adjacent_id, 0, 0, 0, 0);
+                        if vy == blocks - 1 || adjacent_color == VloxColor::Void {
                             vertices.push([size * x, size * (y + 1.0), size * z]);
                             vertices.push([size * (x + 1.0), size * (y + 1.0), size * z]);
                             vertices.push([size * (x + 1.0), size * (y + 1.0), size * (z + 1.0)]);
@@ -188,6 +288,10 @@ impl VloxData {
                             normals.push([0.0, 1.0, 0.0]);
                             normals.push([0.0, 1.0, 0.0]);
                             normals.push([0.0, 1.0, 0.0]);
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
                             indices.push(vertices.len() as u32 - 4);
                             indices.push(vertices.len() as u32 - 1);
                             indices.push(vertices.len() as u32 - 2);
@@ -197,7 +301,9 @@ impl VloxData {
                         }
 
                         //back
-                        if vz == 0 || self.get(vx, vy, vz - 1, depth) == 0 {
+                        adjacent_id = self.get(vx, vy, vz - 1, depth);
+                        adjacent_color = materials.color(adjacent_id, 0, 0, 0, 0);
+                        if vz == 0 || adjacent_color == VloxColor::Void {
                             vertices.push([size * x, size * y, size * z]);
                             vertices.push([size * x, size * (y + 1.0), size * z]);
                             vertices.push([size * (x + 1.0), size * (y + 1.0), size * z]);
@@ -206,6 +312,10 @@ impl VloxData {
                             normals.push([0.0, 0.0, -1.0]);
                             normals.push([0.0, 0.0, -1.0]);
                             normals.push([0.0, 0.0, -1.0]);
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
                             indices.push(vertices.len() as u32 - 4);
                             indices.push(vertices.len() as u32 - 3);
                             indices.push(vertices.len() as u32 - 2);
@@ -214,7 +324,9 @@ impl VloxData {
                             indices.push(vertices.len() as u32 - 4);
                         }
                         //front
-                        if vz == blocks - 1 || self.get(vx, vy, vz + 1, depth) == 0 {
+                        adjacent_id = self.get(vx, vy, vz + 1, depth);
+                        adjacent_color = materials.color(adjacent_id, 0, 0, 0, 0);
+                        if vz == blocks - 1 || adjacent_color == VloxColor::Void {
                             vertices.push([size * x, size * y, size * (z + 1.0)]);
                             vertices.push([size * x, size * (y + 1.0), size * (z + 1.0)]);
                             vertices.push([size * (x + 1.0), size * (y + 1.0), size * (z + 1.0)]);
@@ -223,6 +335,10 @@ impl VloxData {
                             normals.push([0.0, 0.0, 1.0]);
                             normals.push([0.0, 0.0, 1.0]);
                             normals.push([0.0, 0.0, 1.0]);
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
+                            colors.push(color.as_f32x4());
                             indices.push(vertices.len() as u32 - 4);
                             indices.push(vertices.len() as u32 - 1);
                             indices.push(vertices.len() as u32 - 2);
@@ -241,23 +357,23 @@ impl VloxData {
             vertices[i][1] -= offset;
             vertices[i][2] -= offset;
         }
-        (vertices, normals, indices)
+        (vertices, normals, colors, indices)
     }
 }
 
 #[derive(Clone, Debug)]
 struct Vlox {
-    value: u8,
+    value: MaterialId,
     children: Vec<Option<Vlox>>,
 }
 impl Vlox {
-    fn new(value: u8) -> Self {
+    fn new(value: MaterialId) -> Self {
         Self {
             value,
             children: vec![None; 8],
         }
     }
-    fn get(&self, path: Vec<SubVlox>) -> u8 {
+    fn get(&self, path: Vec<SubVlox>) -> MaterialId {
         // if we reached the end of the path, return value
         if path.len() == 0 {
             return self.value;
@@ -272,7 +388,7 @@ impl Vlox {
             return self.value;
         }
     }
-    fn set(&mut self, path: Vec<SubVlox>, value: u8) {
+    fn set(&mut self, path: Vec<SubVlox>, value: MaterialId) {
         // if we reached the end of the path, set value
         if path.len() == 0 {
             self.value = value;
@@ -302,7 +418,7 @@ mod tests {
         let depth: u8 = 2;
         let blocks = 2_u128.pow(depth as u32);
 
-        let mut data = VloxData::new(8.0);
+        let mut data = VloxData::new(3);
 
         let mut value = 0;
         for x in 0..blocks {

@@ -5,7 +5,9 @@ use bevy::{
     render::{
         camera::NormalizedRenderTarget,
         mesh::{
-            Indices, MeshAabb, PrimitiveTopology::TriangleList, VertexAttributeValues::Float32x3,
+            Indices, MeshAabb,
+            PrimitiveTopology::TriangleList,
+            VertexAttributeValues::{Float32x3, Float32x4},
         },
     },
     window::{CursorGrabMode, WindowMode, WindowRef},
@@ -16,7 +18,7 @@ use vlox::VloxData;
 
 mod vlox;
 
-const MESH_SIZE: f32 = 4.0;
+const DEPTH_TO_UNIT: u8 = 2;
 
 const MIN_VLOX_DEPTH: u8 = 1;
 const MAX_VLOX_DEPTH: u8 = 5;
@@ -153,27 +155,64 @@ fn setup(
     ));
 
     // Custom mesh
-    let mut data = vlox::VloxData::new(MESH_SIZE);
-    data.set(0, 0, 0, 2, 1);
+    vlox_settings.data = vlox::VloxData::new(DEPTH_TO_UNIT);
+    vlox_settings.data.set(0, 0, 0, 2, 1);
 
-    data.set(1, 0, 0, 2, 1);
-    data.set(2, 0, 0, 2, 1);
-    data.set(3, 0, 0, 2, 1);
+    vlox_settings.data.set(1, 0, 0, 2, 1);
+    vlox_settings.data.set(2, 0, 0, 2, 1);
+    vlox_settings.data.set(3, 0, 0, 2, 1);
 
-    data.set(0, 1, 0, 2, 1);
-    data.set(0, 2, 0, 2, 1);
-    data.set(0, 3, 0, 2, 1);
+    vlox_settings.data.set(0, 1, 0, 2, 1);
+    vlox_settings.data.set(0, 2, 0, 2, 1);
+    vlox_settings.data.set(0, 3, 0, 2, 1);
 
-    data.set(0, 0, 1, 2, 1);
-    data.set(0, 0, 2, 2, 1);
-    data.set(0, 0, 3, 2, 1);
+    vlox_settings.data.set(0, 0, 1, 2, 1);
+    vlox_settings.data.set(0, 0, 2, 2, 1);
+    vlox_settings.data.set(0, 0, 3, 2, 1);
 
-    let (vertices, normals, indices) = compute_mesh(&data);
-    vlox_settings.data = data;
     vlox_settings.selected_depth = INITIAL_VLOX_DEPTH;
+    vlox_settings.selected_value = 1;
+    vlox_settings.materials.set(0, vlox::Material::Void);
+    vlox_settings.materials.set(
+        1,
+        vlox::Material::Solid(vlox::SolidMaterial {
+            name: "White".to_string(),
+            data: VloxData::new(0),
+            colors: vec![vlox::Color::new(1.0, 1.0, 1.0, 1.0)],
+        }),
+    );
+    vlox_settings.materials.set(
+        2,
+        vlox::Material::Solid(vlox::SolidMaterial {
+            name: "Red".to_string(),
+            data: VloxData::new(0),
+            colors: vec![vlox::Color::new(1.0, 0.0, 0.0, 1.0)],
+        }),
+    );
+    vlox_settings.materials.set(
+        3,
+        vlox::Material::Solid(vlox::SolidMaterial {
+            name: "Green".to_string(),
+            data: VloxData::new(0),
+            colors: vec![vlox::Color::new(0.0, 1.0, 0.0, 1.0)],
+        }),
+    );
+    vlox_settings.materials.set(
+        4,
+        vlox::Material::Solid(vlox::SolidMaterial {
+            name: "Blue".to_string(),
+            data: VloxData::new(0),
+            colors: vec![vlox::Color::new(0.0, 0.0, 1.0, 1.0)],
+        }),
+    );
 
+    let (vertices, normals, colors, indices) = vlox_settings
+        .data
+        .compute_mesh_at_depth(COMPUTE_MESH_DEPTH, &vlox_settings.materials);
+    let mut mesh = Mesh::new(TriangleList, RenderAssetUsages::default());
+    set_vlox_mesh(&mut mesh, vertices, normals, colors, indices);
     commands.spawn((
-        Mesh3d(meshes.add(build_vlox_mesh(vertices, normals, indices))),
+        Mesh3d(meshes.add(mesh)),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
         Transform::from_xyz(0.0, 0.0, 0.0),
         MainMesh,
@@ -242,13 +281,13 @@ fn edit_mesh(
                     let (vx, vy, vz) = vlox_settings
                         .data
                         .xyz_f32_to_vlox_xyz(point.x, point.y, point.z, depth);
-                    vlox_settings.data.set(vx, vy, vz, depth, 1);
+                    let selected_value = vlox_settings.selected_value;
+                    vlox_settings.data.set(vx, vy, vz, depth, selected_value);
 
-                    let (vertices, normals, indices) = compute_mesh(&vlox_settings.data);
-                    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Float32x3(vertices));
-                    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Float32x3(normals));
-                    mesh.insert_indices(Indices::U32(indices));
-                    mesh.compute_aabb();
+                    let (vertices, normals, colors, indices) = vlox_settings
+                        .data
+                        .compute_mesh_at_depth(COMPUTE_MESH_DEPTH, &vlox_settings.materials);
+                    set_vlox_mesh(mesh, vertices, normals, colors, indices);
                 }
             }
         } else if mouse_button_input.just_pressed(MouseButton::Right) {
@@ -273,11 +312,10 @@ fn edit_mesh(
                         .xyz_f32_to_vlox_xyz(point.x, point.y, point.z, depth);
                     vlox_settings.data.set(vx, vy, vz, depth, 0);
 
-                    let (vertices, normals, indices) = compute_mesh(&vlox_settings.data);
-                    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Float32x3(vertices));
-                    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Float32x3(normals));
-                    mesh.insert_indices(Indices::U32(indices));
-                    mesh.compute_aabb();
+                    let (vertices, normals, colors, indices) = vlox_settings
+                        .data
+                        .compute_mesh_at_depth(COMPUTE_MESH_DEPTH, &vlox_settings.materials);
+                    set_vlox_mesh(mesh, vertices, normals, colors, indices);
                     info!("updated mesh")
                 }
             }
@@ -295,25 +333,60 @@ fn edit_mesh(
         vlox_settings.selected_depth += 1;
         println!("new depth: {}", vlox_settings.selected_depth);
     }
+
+    if keyboard_input.just_pressed(KeyCode::Digit1) {
+        vlox_settings.selected_value = 1;
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit2) {
+        vlox_settings.selected_value = 2;
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit3) {
+        vlox_settings.selected_value = 3;
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit4) {
+        vlox_settings.selected_value = 4;
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit5) {
+        //vlox_settings.selected_value = 5;
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit6) {
+        //vlox_settings.selected_value = 6;
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit7) {
+        //vlox_settings.selected_value = 7;
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit8) {
+        //vlox_settings.selected_value = 8;
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit9) {
+        //vlox_settings.selected_value = 9;
+    }
+    if keyboard_input.just_pressed(KeyCode::Digit0) {
+        //vlox_settings.selected_value = 0;
+    }
 }
 
 #[derive(Resource, Default)]
 struct VloxSettings {
+    selected_value: vlox::MaterialId,
     selected_depth: u8,
     data: vlox::VloxData,
+    materials: vlox::MaterialMap,
 }
 
 #[derive(Component)]
 struct MainMesh;
 
-fn build_vlox_mesh(vertices: Vec<[f32; 3]>, normals: Vec<[f32; 3]>, indices: Vec<u32>) -> Mesh {
-    let mut mesh = Mesh::new(TriangleList, RenderAssetUsages::default());
+fn set_vlox_mesh(
+    mesh: &mut Mesh,
+    vertices: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    colors: Vec<[f32; 4]>,
+    indices: Vec<u32>,
+) {
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Float32x3(vertices));
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Float32x3(normals));
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, Float32x4(colors));
     mesh.insert_indices(Indices::U32(indices));
-    mesh
-}
-
-fn compute_mesh(data: &VloxData) -> (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<u32>) {
-    data.compute_mesh_at_depth(COMPUTE_MESH_DEPTH)
+    mesh.compute_aabb();
 }
